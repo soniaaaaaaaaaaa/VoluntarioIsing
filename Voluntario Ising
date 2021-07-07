@@ -1,0 +1,160 @@
+#include <stdio.h>
+#include <math.h>
+#include <time.h>
+#include <stdlib.h>
+#include "gsl_rng.h"
+#define N 80
+#define temperatura 1.5
+
+gsl_rng *tau;
+
+int main(){
+
+	//Definimos las variables necesarias para nuestro programa
+	int i, j, k, l, n, m, q, a, s[N+1][N+1];
+	double aleatorio, p, energia;
+	double sumatoria1, sumatoria2, sumatoria3, sumatoria4, sumatoria5, sumatoria6, sumatoria7, sumatoria8;
+	double magnetizacion, emedia, calor, funcion[40]; 
+	double varianza1, varianza2;
+	FILE *f1;
+
+	f1=fopen("funcioncorrelacion.txt","w");
+
+	//Parte para los números aleatorios
+	extern gsl_rng *tau;
+	int semilla=184795;
+	tau=gsl_rng_alloc(gsl_rng_taus);
+	gsl_rng_set(tau, semilla);
+	
+	//Inicializamos todos los spines segun que configuracion queramos
+	for(i=1;i<=N;i++){
+		for(j=1;j<=N;j++){
+			s[i][j]=1;
+		}
+	}
+
+	j=1;
+	sumatoria2=0;
+	sumatoria4=0;
+	sumatoria6=0;
+	sumatoria7=0;
+	sumatoria8=0;
+
+	//Iniciamos el bucle		
+	for(k=0; k<1000000; k++){	//Le damos los pasos montecarlo que queramos que haga
+		for(i=0; i<=N*N; i++){	//Un paso montecarlo
+		//Escogemos un punto al azar
+		n=gsl_rng_uniform_int(tau,N+1);
+		m=gsl_rng_uniform_int(tau,N+1);
+
+		//Calculamos la energía de cada uno, teniendo en cuenta condiciones de contorno periodicas
+		if(n==N){
+			if(m==N){
+				energia=2*s[n][m]*(s[1][m]+s[n-1][m]+s[n][1]+s[n][m-1]);
+			}else{
+				if(m==1){
+					energia=2*s[n][m]*(s[1][m]+s[n-1][m]+s[n][m+1]+s[n][N]);
+				}else{
+					energia=2*s[n][m]*(s[1][m]+s[n-1][m]+s[n][m+1]+s[n][m-1]);
+				}
+			}		
+		}else{
+			if(n==1){
+				if(m==1){
+					energia=2*s[n][m]*(s[n+1][m]+s[N][m]+s[n][m+1]+s[n][N]);
+				}else{
+					if(m==N){
+						energia=2*s[n][m]*(s[n+1][m]+s[N][m]+s[n][1]+s[n][m-1]);
+					}else{
+						energia=2*s[n][m]*(s[n+1][m]+s[N][m]+s[n][m+1]+s[n][m-1]);
+					}
+				}
+			}else{
+				if(m==1){
+					energia=2*s[n][m]*(s[n+1][m]+s[n-1][m]+s[n][m+1]+s[n][N]);
+				}else{
+					if(m==N){
+						energia=2*s[n][m]*(s[n+1][m]+s[n-1][m]+s[n][1]+s[n][m-1]);
+					}else{
+						energia=2*s[n][m]*(s[n+1][m]+s[n-1][m]+s[n][m+1]+s[n][m-1]);
+					}
+				}
+			}
+		}
+
+		//Calculamos la probabilidad del spin
+		p=exp(-energia/temperatura);
+
+		//Generamos un número aleatorio ente 0 y 1 y cambiamos el spin
+		aleatorio=gsl_rng_uniform(tau);
+
+		if(aleatorio<p){
+			s[n][m]=-s[n][m];
+		}
+
+		}//Se cierra el bucle, termina un paso montecarlo
+		
+		//Solo haremos los calculos cuando pasen 100 pasos montecarlo. 
+		if((k/100)==j){
+			//Cálculo de la magnetización
+			sumatoria1=0;
+			for(l=1;l<=N;l++){
+				for(i=1;i<=N;i++){
+					sumatoria1=sumatoria1+s[l][i];
+				}
+			}
+			sumatoria2=sumatoria2+fabs(sumatoria1)/(N*N);
+			sumatoria7=sumatoria7+(fabs(sumatoria1)/(N*N)-sumatoria2/j)*(fabs(sumatoria1)/(N*N)-sumatoria2/j);
+
+			//Cálculo de la energía media
+			sumatoria3=0.0;
+			for(l=1;l<=N;l++){
+				for(i=1;i<=N;i++){
+					sumatoria3=sumatoria3+s[l][i]*(s[l][i+1]+s[l+1][i]+s[l][i-1]+s[l-1][i]);
+				}
+			}
+			sumatoria4=sumatoria4+sumatoria3*(-1/2.0);
+			sumatoria8=sumatoria8+((-sumatoria3/2.0)/(2*N)-sumatoria4/j)*((-sumatoria3/2.0)/(2*N)-sumatoria4/j);
+
+			//Cálculo de la función de correlación
+			for(q=0; q<40; q++){
+				sumatoria5=0;
+				for(l=1;l<=N;l++){
+					for(i=1;i<=N;i++){
+						sumatoria5=sumatoria5+s[l][i]*s[l+q][i];
+					}
+				}
+				funcion[q]=sumatoria5;
+			}
+			j=j+1;
+		}
+	}//Cerramos el bucle principal
+
+	//Escribimos los resultados
+	//magnetizacion
+	magnetizacion=sumatoria2/10000;
+	varianza1=sqrt(sumatoria7/10000);
+
+	//Energia media
+	emedia=sumatoria4/(2*N*10000);
+	varianza2=sqrt(sumatoria8/10000);
+
+	//Calor especifico
+	calor=(sumatoria4*sumatoria4/10000-pow((sumatoria4/10000),2))/(N*N*temperatura);
+
+	//Función de correlación
+	for(i=0; i<10; i++){
+		funcion[i]=funcion[i]/10000;
+		fprintf(f1,"%lf\n", funcion[i]);
+	}
+	
+	fclose(f1);
+
+	//Escribimos las cosas
+	printf("La magnetización es: %lf, con una varianza de %lf, con %i partículas y a %lf Kelvin\n", magnetizacion, varianza1, N, temperatura);
+	printf("La energía media del sistema es: %e, con una varianza de %e, con %i partículas y a %lf Kelvin\n", emedia, varianza2, N, temperatura);
+	printf("El calor específico del sistema es: %e, con %i partículas y a %lf Kelvin\n", calor, N, temperatura);
+
+	return 0;
+	
+}
